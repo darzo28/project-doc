@@ -1,0 +1,79 @@
+@startuml C4 Infrastructure Diagram - Система поиска и бронирования билетов
+left to right direction
+!define C4P https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master
+!includeurl C4P/C4_Container.puml
+
+title C4 Infrastructure Diagram - Система поиска и бронирования билетов
+
+package "Облачная инфраструктура" as cloud {
+    Container(nginx, "Nginx", "Nginx", "Обратный прокси и балансировщик нагрузки")
+
+    package "Kubernetes Cluster" as k8s_cluster {
+        package "User Pod" as auth_pod {
+            Container(user_service, "User Service", "Nest.js", "Сервис управления пользователями")
+        }
+
+        package "Admin Pod" as admin_pod {
+            Container(admin_service, "Admin Service", "Nest.js", "Сервис администрирования")
+        }
+
+        package "Event Pod" as event_pod {
+            Container(event_service, "Event Service", "Nest.js", "Сервис мероприятий")
+        }
+
+        package "Order Pod" as order_pod {
+            Container(order_service, "Order Service", "Nest.js", "Сервис оформления заказов")
+        }
+
+        package "Notification Pod" as notification_pod {
+            Container(notification_service, "Notification Service", "Nest.js", "Сервис уведомлений")
+        }
+
+        package "Analytics Pod" as analytics_pod {
+            Container(analytics_service, "Analytics Service", "Nest.js", "Сервис аналитики и отчетности")
+        }
+    }
+
+    Container(rabbitmq, "Шина событий", "RabbitMQ", "Обмен сообщениями между сервисами")
+    Container(redis_cluster, "Redis Cluster", "Redis", "Кэширование данных для всех сервисов")
+}
+
+package "Database Cluster" as database {
+    Container(database_master, "PostgreSQL Master", "PostgreSQL", "Основная база данных")
+    Container(database_replica, "PostgreSQL Replica", "PostgreSQL", "Реплика базы данных для чтения")
+}
+
+package "Analytics Datastore" as analytics_db {
+    Container(elasticsearch, "Elasticsearch", "ELK Stack", "Хранилище аналитических данных")
+}
+
+System_Ext(payment_system, "Платежная система", "Stripe API")
+System_Ext(map_system, "Система адресов и залов", "Maps API")
+System_Ext(email_system, "Email сервис", "Mailgun API")
+
+Rel(k8s_cluster, database_master, "Чтение/запись", "TypeORM")
+
+Rel(analytics_service, database_replica, "Read-only", "TypeORM")
+Rel(database_master, database_replica, "Репликация данных", "Streaming")
+
+Rel(k8s_cluster, redis_cluster, "Кэширование данных", "NestJs Cache Manager")
+
+Rel(analytics_service, elasticsearch, "Хранение и поиск аналитики", "NestjS ElasticSearchModule")
+
+'   Внешние системы
+Rel(event_service, map_system, "Получение информации о площадках и адресах", "REST API")
+Rel(order_service, payment_system, "Обработка платежей", "REST API")
+Rel(notification_service, email_system, "Отправка email уведомлений", "REST API")
+
+'   RabbitMQ — события
+Rel(user_service, rabbitmq, "Публикация событий пользователей")
+Rel(admin_service, rabbitmq, "Публикация админ-событий")
+Rel(event_service, rabbitmq, "Публикация событий мероприятий")
+Rel(order_service, rabbitmq, "Публикация событий заказов")
+Rel(notification_service, rabbitmq, "Чтение и публикация событий уведомлений")
+Rel(analytics_service, rabbitmq, "Подписка на события для аналитики")
+
+'   Балансировка нагрузки
+Rel(nginx, k8s_cluster, "Проксирование запросов", "HTTP")
+
+@enduml

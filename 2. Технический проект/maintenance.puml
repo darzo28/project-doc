@@ -1,0 +1,88 @@
+@startuml maintenance
+!theme vibrant
+
+package " Kubernetes" as k8s {
+  [Docker] as docker << (C, #FFAAAA) >>
+  [Containers] as containers << (C, #FFAAAA) >>
+}
+
+package "Система бронирования билетов - обслуживание" as maintenance {
+    actor "Системный администратор" as sys_admin
+    package "Система мониторинга" as monitoring_system {
+        [Система мониторинга Prometheus] as monitoring_service << (C, #FFAAAA) >>
+        [Система визуализации Grafana] as visual_service << (C, #FFAAAA) >>
+    }
+    [Система бэкапов] as backup_service << (C, #FFAAAA) >>
+}
+
+package "Внешние сервисы" as outer_services {
+    package "Каналы уведомлений" as notifications {
+        [Почтовый шлюз] as email_service << (C, #FFAAAA) >>
+        [Telegram] as tg_service << (C, #FFAAAA) >>
+    }
+}
+
+package "Разработка" as development {
+    actor "Разработчик" as developer
+    [Система контроля версий (Git GitLab)] as vcs << (C, #FFAAAA) >>
+    
+    package "CI/CD GitLab" as cicd {
+      [CI/CD GitLab (Ветка prod)] as cicd_prod << (C, #FFAAAA) >>
+      [CI/CD GitLab (Ветка qa)] as cicd_qa << (C, #FFAAAA) >>
+      [CI/CD GitLab (Ветка dev)] as cicd_dev << (C, #FFAAAA) >>
+    }
+    
+    package "CI/CD Pipeline (PROD)" as build_prod {
+      [Build Stage] as buildstage_prod << (C, #FFAAAA) >>
+      [Testing Stage] as testingstage_prod << (C, #FFAAAA) >>
+    }
+    
+    package "CI/CD Pipeline (QA)" as build_qa {
+      [Build Stage QA] as buildstage_qa << (C, #FFAAAA) >>
+      [Testing Stage QA] as testingstage_qa << (C, #FFAAAA) >>
+    }
+    
+    package "CI/CD Pipeline (DEV)" as build_dev {
+      [Build Stage DEV] as buildstage_dev << (C, #FFAAAA) >>
+      [Testing Stage DEV] as testingstage_dev << (C, #FFAAAA) >>
+    }
+
+    [Реестр контейнеров GitLab] as containeregistry << (C, #FFAAAA) >>
+}
+
+sys_admin --> monitoring_system : "Мониторинг состояния системы"
+sys_admin --> backup_service : "Контроль и восстановление данных"
+visual_service --> monitoring_service : "PromQL"
+monitoring_service --> notifications : "Уведомления о сбоях и предупреждениях"
+developer --> vcs : "PUSH коммитов"
+vcs --> cicd_prod : "CI/CD для PROD"
+vcs --> cicd_qa : "CI/CD для QA"
+vcs --> cicd_dev : "CI/CD для DEV"
+
+cicd_prod --> buildstage_prod : "Запуск pipeline"
+cicd_qa --> buildstage_qa : "Запуск pipeline"
+cicd_dev --> buildstage_dev : "Запуск pipeline"
+
+buildstage_prod --> containeregistry : "Сборка Docker-образов и PUSH"
+buildstage_qa --> containeregistry : "Сборка Docker-образов и PUSH"
+buildstage_dev --> containeregistry : "Сборка Docker-образов и PUSH"
+
+containeregistry <-- testingstage_prod : "PULL Docker-образов"
+containeregistry <-- testingstage_qa : "PULL Docker-образов"
+containeregistry <-- testingstage_dev : "PULL Docker-образов"
+
+buildstage_prod --> testingstage_prod : "PASS"
+buildstage_qa --> testingstage_qa : "PASS"
+buildstage_dev --> testingstage_dev : "PASS"
+
+testingstage_prod --> docker : "PULL обновлений [SSH] (Тэг prod)"
+testingstage_qa --> docker : "PULL обновлений [SSH] (Тэг qa)"
+testingstage_dev --> docker : "PULL обновлений [SSH] (Тэг dev)"
+
+docker --> containeregistry : "PULL Docker-образов"
+docker --> containers : "Обновление и развёртка контейнеров"
+
+monitoring_service --> containers : "Проверка состояния"
+backup_service --> containers : "Создание и восстановление бэкапов"
+
+@enduml
